@@ -8,41 +8,43 @@ Yellow='\033[0;33m'
 White='\033[0;37m'
 declare -a data=("")
 declare -a data2=("")
+declare -a data3=("")
+declare -a data4=("")
 declare -a filesArr=("")
 logFile=""
 confFile=""
 dateType=0
 launchFrom=""
-hostName=$(hostname)
+hostName="$(hostname)"
 
 #check another copy is still running
 if [[ -f "${lockFile}" ]]; then
-    echo "Another copy is still running."
-    exit 2
+  echo "Another copy is still running."
+  exit 2
 fi
 
 #Head to the current directory of the script it has been launched from. Check if we are launched from symlink or any other place as subshell process.
 echo "${0}" | egrep -e '^\..*' > /dev/null 2>&1
 if [[ "${?}" == "0" ]]; then
-    #The script is launched from shell manually
-    scriptName=$(echo "${0}" | sed 's/.//')
-    scriptPath=$(realpath -e "${0}" | sed "s/\\${scriptName}//")
-    launchFrom="shell"
-    cd "${scriptPath}"
+  #The script is launched from shell manually
+  scriptName=$(echo "${0}" | sed 's/.//')
+  scriptPath=$(realpath -e "${0}" | sed "s/\\${scriptName}//")
+  launchFrom="shell"
+  cd "${scriptPath}"
 else
-    #The script is launched from cron or any parent process
-    scriptName=$(basename "${0}")
-    scriptPath=$(echo "${0}" | sed "s/${scriptName}//")
-    launchFrom="cron"
-    cd "${scriptPath}"
+  #The script is launched from cron or any parent process
+  scriptName=$(basename "${0}")
+  scriptPath=$(echo "${0}" | sed "s/${scriptName}//")
+  launchFrom="cron"
+  cd "${scriptPath}"
 fi
 
 #check config file.Get values from it if it is found, or creating new one if it is not.
 if [[ "${launchFrom}" == "shell" ]]; then
-    confFile="$(echo "${0}" | egrep -e '^\..*' | sed 's/.\///' | cut -f 1 -d'.').conf"
+  confFile="$(echo "${0}" | egrep -e '^\..*' | sed 's/.\///' | cut -f 1 -d'.').conf"
 fi
 if [[ "${launchFrom}" == "cron" ]]; then
-    confFile="$(echo "${0}" | sed 's/.*\///' | cut -f 1 -d'.').conf"
+  confFile="$(echo "${0}" | sed 's/.*\///' | cut -f 1 -d'.').conf"
 fi
 if ! [[ -f "${confFile}" ]]; then
 	echo -e "${Yellow}Warning! ${confFile} is not found and it was created. Please, fill in the file and then this program will works!${Color_Off}"
@@ -56,23 +58,23 @@ EOF
 else
 	source "${confFile}"
 	if [[ -z "${telegramChat}" ]] || [[ -z "${telegramToken}" ]] || [[ -z "${logFolder}" ]] || [[ -z "${lockFile}" ]]; then
-			echo -e "${Red}Error! Some variables in ${confFile} is empty!${Color_Off}"
-			exit 1
+    echo -e "${Red}Error! Some variables in ${confFile} is empty!${Color_Off}"
+    exit 1
 	fi
 fi
 
 #check the log folder
 if ! [[ -d "${logFolder}" ]]; then
-    echo -e "${logFolder} is not found! Exiting..."
+  echo -e "${logFolder} is not found! Exiting..."
  	exit 1
 fi
 
 #select the type of date output - 1 digit day or 2 digits day.To parse correctly date from logs.
 date | cut -d' ' -f 2 | egrep "^0." > /dev/null 2>&1
 if [[ "${?}" == "0" ]]; then
-    dateType="1"
+  dateType="1"
 else
-    dateType="2"
+  dateType="2"
 fi
 
 #creating lock file
@@ -81,84 +83,87 @@ fi
 #heading into the logs folder
 cd "${logFolder}"
 if [[ "${?}" != "0" ]]; then
-    echo "Error getting into ${logFolder}. Interrrupting..."
-    exit 1
+  echo "Error getting into ${logFolder}. Interrrupting..."
+  exit 1
 fi
 
 #collecting log files list
 filesarr=($(ls *.log))
 #staring main function
 for (( i=0; i<${#filesarr[*]}; i++ )) do
-    logfile="${filesarr[${i}]}"
-    #parsing log file to get records about login or logout attempts
-    if [[ "${dateType}" == "1" ]]; then
-        IFS=$'\n'
-        data=($(cat "${logfile}" | egrep -a "^...\ \ [0-9].*logged in.*"))
-        data2=($(cat "${logfile}" | egrep -a "^...\ \ [0-9].*logged out.*"))
-        data3=($(cat "${logfile}" | egrep -a "^...\ \ [0-9].*login failure.*"))
-        data4=($(cat "${logfile}" | egrep -a "^.*ALARM.*"))
-    elif [[ "${dateType}" == "2" ]]; then
-        IFS=$'\n'
-        data=($(cat "${logfile}" | egrep -a "^...\ [0-9].*logged in.*"))
-        data2=($(cat ${logfile} | egrep -a "^...\ [0-9].*logged out.*"))
-        data3=($(cat ${logfile} | egrep -a "^...\ [0-9].*login failure.*"))
-        data4=($(cat ${logfile} | egrep -a "^.*ALARM.*"))
-    fi
+  logfile="${filesarr[${i}]}"
+  #parsing log file to get records about login or logout attempts
+  if [[ "${dateType}" == "1" ]]; then
+    IFS=$'\n'
+    data=($(cat "${logfile}" | egrep -a "^...\ \ [0-9].*logged in.*"))
+    data2=($(cat "${logfile}" | egrep -a "^...\ \ [0-9].*logged out.*"))
+    data3=($(cat "${logfile}" | egrep -a "^...\ \ [0-9].*login failure.*"))
+    data4=($(cat "${logfile}" | egrep -a "^.*ALARM.*"))
+  elif [[ "${dateType}" == "2" ]]; then
+    IFS=$'\n'
+    data=($(cat "${logfile}" | egrep -a "^...\ [0-9].*logged in.*"))
+    data2=($(cat ${logfile} | egrep -a "^...\ [0-9].*logged out.*"))
+    data3=($(cat ${logfile} | egrep -a "^...\ [0-9].*login failure.*"))
+    data4=($(cat ${logfile} | egrep -a "^.*ALARM.*"))
+  fi
 
-    #login records
-    if [[ ${#data[*]} -ne 0 ]]; then
-        declare -a tmparr=("")
-        for (( i=0; i<${#data[*]}; i++ )) do
-        IFS=$'\ '
-        tmparr=($data[$i])
-            subj="${hostName} ✅Login ${tmparr[5]}"
-        message="User: ${tmparr[7]} - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[11]} via ${tmparr[13]}"
-        curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
-        done
-        sed -i 's/logged in/logge in/' "${logfile}" > /dev/null 2>&1
-        systemctl restart rsyslog
-    fi
+  #login records
+  if [[ ${#data[*]} -ne 0 ]]; then
+    declare -a tmparr=("")
+    for (( i=0; i<${#data[*]}; i++ )) do
+    IFS=$'\ '
+    tmparr=($data[$i])
+      subj="${hostName} ✅Login ${tmparr[5]}"
+    message="User: ${tmparr[7]} - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[11]} via ${tmparr[13]}"
+    curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
+    done
+    sed -i 's/logged in/logge in/' "${logfile}" > /dev/null 2>&1
+    systemctl restart rsyslog
+  fi
 
-    #logout records
-    if [[ ${#data2[*]} -ne 0 ]]; then
-        declare -a tmparr=("")
-        for (( i=0; i<${#data2[*]}; i++ )) do
-        IFS=$'\ '
-        tmparr=($data2[$i])
-            subj="${hostName} ❌Logout ${tmparr[5]}"
-        message="User: ${tmparr[7]} - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[11]} via ${tmparr[13]}"
-        curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
-        done
-        sed -i 's/logged out/logge out/' "${logfile}" > /dev/null 2>&1
-        systemctl restart rsyslog
-    fi
+  #logout records
+  if [[ ${#data2[*]} -ne 0 ]]; then
+    declare -a tmparr=("")
+    for (( i=0; i<${#data2[*]}; i++ )) do
+    IFS=$'\ '
+    tmparr=($data2[$i])
+      subj="${hostName} ❌Logout ${tmparr[5]}"
+    message="User: ${tmparr[7]} - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[11]} via ${tmparr[13]}"
+    curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
+    done
+    sed -i 's/logged out/logge out/' "${logfile}" > /dev/null 2>&1
+    systemctl restart rsyslog
+  fi
 
-    #failed login records
-    if [[ ${#data3[*]} -ne 0 ]]; then
-        declare -a tmparr=("")
-        for (( i=0; i<${#data3[*]}; i++ )) do
-        IFS=$'\ '
-        tmparr=(${data3[${i}]})
-            subj="${hostName}🚨Failed login attempt ${tmparr[5]}"
-        if [[ "${tmparr[12]}" == "via" ]]; then
-            message="User: <empty> - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[11]} via ${tmparr[13]}"
-        else
-            message="User: ${tmparr[10]} - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[12]} via ${tmparr[14]}"
-        fi
-        curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
-        done
-        sed -i 's/login failure/login failur/' "${logfile}" > /dev/null 2>&1
-        systemctl restart rsyslog
+  #failed login records
+  if [[ ${#data3[*]} -ne 0 ]]; then
+    declare -a tmparr=("")
+    for (( i=0; i<${#data3[*]}; i++ )) do
+    IFS=$'\ '
+    tmparr=(${data3[${i}]})
+      subj="${hostName}🚨Failed login attempt ${tmparr[5]}"
+    if [[ "${tmparr[12]}" == "via" ]]; then
+      message="User: <empty> - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[11]} via ${tmparr[13]}"
+    else
+      message="User: ${tmparr[10]} - ${tmparr[2]} ${tmparr[0]} ${tmparr[1]}\nIP: ${tmparr[12]} via ${tmparr[14]}"
     fi
+    curl --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
+    done
+    sed -i 's/login failure/login failur/' "${logfile}" > /dev/null 2>&1
+    systemctl restart rsyslog
+  fi
 
-    #records triggered by addtitional keyword "ALERT" in firewall log rules
-    if [[ ${#data4[*]} -ne 0 ]]; then
-        subj="${hostName} 🚩Some alarms found."
-        message="Some alarms found.Check mikrotik logs"
-        curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
-        sed -i 's/ALARM/ALAR/' ${logfile} > /dev/null 2>&1
-        systemctl restart rsyslog
-    fi
+  #records triggered by addtitional keyword "ALERT" in firewall log rules.Doesn't matter how much alerts are there,we send only one notifiy
+  if [[ ${#data4[*]} -ne 0 ]]; then
+    declare -a tmparr=("")
+    IFS=$'\ '
+    tmparr=(${data4[${i}]})
+    subj="${hostName} 🚩Some alarms found at ${tmparr[5]}(${tmparr[3]})"
+    message="ALARM keyword found in logs.Check logs of the device."
+    curl  --header "Content-Type: application/json" --request "POST" --data "{\"chat_id\":\"${telegramChat}\",\"text\":\"${subj}\n${message}\"}" "https://api.telegram.org/bot${telegramToken}/sendMessage"
+    sed -i 's/ALARM/ALAR/' ${logfile} > /dev/null 2>&1
+    systemctl restart rsyslog
+  fi
 done
 
 #removing lock
